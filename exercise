@@ -1,0 +1,344 @@
+best.tree.p
+library("psych")
+
+
+wine <- read.table("C://Users/YeBin/Desktop/winequality/winequality-red.csv", header=T, sep = ";")
+wine <- as.data.frame(wine)
+
+winedat <- wine
+wine.out.test <- wine
+
+summary(wine)
+describe(wine)
+
+attach(winedat)
+head(winedat)
+par(mfrow=c(1,5), oma = c(1,1,0,0) + 0.1,  mar = c(3,3,1,1) + 0.1)
+boxplot(fixed.acidity, col="slategray2", pch=19)
+mtext("Fixed Acidity", cex=0.8, side=1, line=2)
+boxplot(volatile.acidity, col="slategray2", pch=19)
+mtext("Volatile Acidity", cex=0.8, side=1, line=2)
+boxplot(citric.acid, col="slategray2", pch=19)
+mtext("Citric Acid", cex=0.8, side=1, line=2)
+boxplot(residual.sugar, col="slategray2", pch=19)
+mtext("Residual Sugar", cex=0.8, side=1, line=2)
+boxplot(chlorides, col="slategray2", pch=19)
+mtext("Chlorides", cex=0.8, side=1, line=2)
+
+par(mfrow=c(1,5), oma = c(1,1,0,0) + 0.1,  mar = c(3,3,1,1) + 0.1)
+boxplot(free.sulfur.dioxide, col = "slategray2", pch= 19)
+mtext("Free.Sulfur.Dioxide",cex = 0.8, side = 1, line = 2)
+boxplot(total.sulfur.dioxide, col = "slategray2", pch= 19)
+mtext("Total.Sulfur.Dioxide",cex = 0.8, side = 1, line = 2)
+boxplot(density, col = "slategray2", pch= 19)
+mtext("Density",cex = 0.8, side = 1, line = 2)
+boxplot(pH, col = "slategray2", pch= 19)
+mtext("pH",cex = 0.8, side = 1, line = 2)
+boxplot(sulphates, col = "slategray2", pch= 19)
+mtext("Sulphates",cex = 0.8, side = 1, line = 2)
+
+par(mfrow=c(1,5), oma = c(1,1,0,0) + 0.1,  mar = c(3,3,1,1) + 0.1)
+boxplot(alcohol, col = "slategray2", pch= 19)
+mtext("Alcohol",cex = 0.8, side = 1, line = 2)
+boxplot(quality, col = "slategray2", pch= 19)
+mtext("Quality",cex = 0.8, side = 1, line = 2)
+
+# 데이터 준비
+## 이상치 제거 (1사분위-1.5사분위범위, 4사분위+1.5.사분위범위)
+install.packages("outliers")
+install.packages("mvoutliers")
+install.packages("car")
+library(outliers)
+library(car)
+
+## scores 함수를 이용한 이상점 테스트
+result = lm(quality ~., data = winedat)
+outlierTest(result)
+scores(wine, type = "iqr", lim = NA)
+
+#### 이상치 제거 (1사분위-1.5사분위범위, 3사분위+1.5.사분위범위)
+wine.lim.up <- rep(0, 11)
+wine.lim.down <- rep(0, 11)
+for (i in 1:11){
+  t1 <- quantile(wine[,i], 0.75)
+  t2 <- IQR(wine[,i])
+  t3 <- quantile(wine[,i], 0.25)
+  wine.lim.up[i] <- t1 + 1.5*t2
+  wine.lim.down[i] <- t3 - 1.5*t2
+}
+
+wine.index <- matrix(0, 1599, ncol = 11)
+for (i in 1:1599)
+  for (j in 1:11)
+  {
+    if (wine.out.test[i,j] > wine.lim.up[j]) 
+      wine.index[i,j] <- wine.index[i,j] + 1
+    if (wine.out.test[i,j] < wine.lim.down[j])
+      wine.index[i,j] <- wine.index[i,j] + 1
+  }
+wine.index
+
+## 이상치 갯수
+wine.index2 <- apply(wine.index, 1, sum) #### i 번째 행에 이상치가 몇 개 있는지
+winetemp <- cbind(wine.index2, wine.out.test) ## 이상치 합들과(이상치갯수 합) 와인데이터 간 비교
+length(which(winetemp$wine.index2 > 0)) ## 이상치를 가진 데이터 몇개인지(iqr에 의하면 883개)
+
+## 이상치 가진 데이터들 모아보기
+wine.outliers <- matrix(0,nrow = 4898, ncol=13)
+wine.outliers <- winetemp[which(winetemp$wine.index2 > 0),]
+outlier.mat <- winetemp
+for(i in 2:13)
+  for(j in 1:1599){
+    ifelse(winetemp[j,1]>0, outlier.mat[j, c(1:13)] <- 0, outlier.mat[j,i] <- winetemp[j,i])
+  }
+outlier.mat
+
+# 이상치 제거한 데이터
+fin.winedat <- subset(outlier.mat, outlier.mat$quality > 0)
+fin.winedat <- fin.winedat[,-c(1)]
+fin.winedat
+
+# scale을 통한 표준화
+winedat <- subset(winedat, select = c(1:11))
+winedat <- scale(winedat)
+winedat <- cbind(winedat, fin.winedat$quality)
+colnames(winedat) <- c("fixed.acidity","volatile.acidity","citric.acid","residual.sugar","chlorides","free.sulfur.dioxide",  "total.sulfur.dioxide", "density", "pH", "sulphates", "alcohol","quality")
+winedat <- as.data.frame(winedat)
+
+## test & train data 
+train <- sample(c(1:1194), 894)
+test <- setdiff(c(1:1194), train)
+winetrain <- winedat[train,]
+winetest <- winedat[test,]
+
+xtrain <- winetrain[,c(1:11)]
+ytrain <- winetrain[,c(12)]
+xtest <- winetest[,c(1:11)]
+ytest <- winetest[,c(12)]
+xtrain <- scale(xtrain)
+xtest <- scale(xtest)
+
+corx <- cor(xtrain)
+corx <- round(corx, digits = 5)
+
+cormat <- matrix(corx, ncol=11, nrow=11)
+colnames(cormat) <- c(names(x))
+rownames(cormat) <- c(names(x))
+
+pearsoncorx <- cor(xtrain, method="spearman")
+pairs(xtrain, panel=panel.smooth, gap=0, pch=19, cex=0.4, col="black")
+
+## 플롯테이블로 공선성 체크                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+plot_table <- function(d, colors, marginColor,main="", text.cex=1.0)
+{
+  plot(c(-1,ncol(d)),c(0,nrow(d)+1), type="n", xaxt="n", yaxt="n", xlab="",ylab="",main=main, bty="n")
+  for (c in 1:ncol(d)) {
+    rect(c-1, nrow(d), c, nrow(d) + 1, col=marginColor)
+    text(c-.5,nrow(d) +.5,colnames(d)[c], cex=text.cex)
+  }
+  for (r in 1:nrow(d)) {
+    rect(-1, r-1, 0, r, col=marginColor)
+    text(-.5, r-.5,rownames(d)[nrow(d) - r + 1], cex=text.cex)
+  }
+  for (r in 1:nrow(d))
+    for (c in 1:ncol(d)) {
+      rect(c-1, r-1, c, r, col=colors[nrow(d) - r + 1,c])
+      text(c-.5,r-.5,d[nrow(d) - r + 1,c], cex=text.cex)
+    }
+}
+matx <- subset(winetrain, select = c(1:11))
+corx2 <- cor(matx)
+corx2 <- round(corx2, digits = 5)
+
+cormat <- matrix(corx2, ncol=11, nrow=11)
+colnames(cormat) <- c("fixed.acidity","volatile.acidity","citric.acid","residual.sugar","chlorides","free.sulfur.dioxide",  "total.sulfur.dioxide", "density", "pH", "sulphates", "alcohol")
+rownames(cormat) <- c("fixed.acidity","volatile.acidity","citric.acid","residual.sugar","chlorides","free.sulfur.dioxide",  "total.sulfur.dioxide", "density", "pH", "sulphates", "alcohol")
+
+colors <- matrix(sapply(cormat, function(x) ifelse(x< -0.7 || x > 0.7, "yellow","white")),ncol=ncol(cormat))
+plot_table(cormat, colors,"skyblue", main = "Correlation", text.cex = 0.8)
+
+
+## 다중공선성 체크해서 변수 선택 (density 제거) //// ###### VIF 활용 추가하기
+
+pairs(xtrain, panel=panel.smooth)
+
+wine.vif.lm = glm(quality ~., data = winetrain)
+step.aic.wine = step(wine.vif.lm, direction = "backward")
+
+install.packages("alr3")
+library(alr3)
+vif(step.aic.wine)
+
+
+## 주성분분석을 통한 다중공선성 제거
+wine.prcomp <- subset(winetrain, select = c("volatile.acidity","citric.acid","chlorides","free.sulfur.dioxide",  "total.sulfur.dioxide", "pH", "sulphates"))
+wine.prcomp <- cat.winetrain[,c(1:11)]
+cat.quality <- cat.winetrain[,c(13)]
+prcompwine<- prcomp(wine.prcomp, center = T, scale = T)
+prcompwine
+summary(prcompwine)
+plot(prcompwine, type="l")
+
+prcomp.dat <- as.matrix(wine.prcomp)%*%prcompwine$rotation
+prcomp.frame <- cbind(as.data.frame(prcomp.dat),winetrain[,12])
+colnames(prcomp.frame) <- c("PC1","PC2","PC3","PC4","PC5","PC6","PC7","quality")
+prcomp.model <- lm(quality ~ PC1 +PC2+PC3+PC4+PC5+PC6, data = prcomp.frame)
+
+predict.result <- predict(prcomp.model, newdata = prcomp.frame)
+
+predict.result[predict.result<4] <- 3
+predict.result[predict.result >=4 & predict.result < 5] =4
+predict.result[predict.result >=5 & predict.result < 6] =5
+predict.result[predict.result >=6 & predict.result < 7] =6
+predict.result[predict.result >=7 & predict.result < 8] =7
+predict.result[predict.result >=8 & predict.result < 9] =8
+predict.result[predict.result >=9] =9
+
+comparison <- cbind(prcomp.frame$quality, predict.result)
+
+r <- winetrain$quality
+
+result.table <- table(predict.result,r)
+cor.table1 <- sum(table(predict.result, r))
+cor.table2 <- length(which(predict.result == r))
+predict.p <- cor.table2/cor.table1
+predict.p
+
+## AIC / BIC 변수 선택
+install.packages("FWDselect")
+library(FWDselect)
+bicselect <- qselection(xtrain, ytrain, q=c(1:10), criterion = "bic", method = "glm")
+bicselect
+aicselect <- qselection(xtrain, ytrain, q=c(1:10), criterion = "aic", method = "glm")
+aicselect
+plot(aicselect)
+plot(bicselect)
+
+abc.winedat <- winetrain[,c("alcohol", "sulphates", "pH", "volatile.acidity", "citric.acid", "total.sulfur.dioxide")]
+abc.winedat <- scale(abc.winedat)
+abc.winedat <- cbind(abc.winedat, winetrain[,12])
+colnames(abc.winedat) <- c("alcohol", "sulphates", "pH", "volatile.acidity", "citric.acid", "total.sulfur.dioxide","quality")
+abc.winedat <- as.data.frame(abc.winedat)
+
+## lm 모형 적합
+lmwine <- lm( quality~., data = winedat)
+summary(lmwine)
+
+## AIC/BIC 결과 모형 test
+abc.test = winetest[,c("alcohol", "sulphates", "pH", "volatile.acidity", "citric.acid", "total.sulfur.dioxide","quality")]
+pred.abc = predict(lmwine, newdata=abc.test)
+abc.equal <- table(round(pred.abc,0)==abc.test[,c("quality")])
+abc.table <- matrix(abc.equal, ncol=2)
+colnames(abc.table) <- c("FALSE", "TRUE")
+abc.p <- abc.table[1,2]/nrow(abc.test)
+abc.p
+
+
+## ROC 곡선
+install.packages("ROCR")
+library(ROCR)
+
+lmwinedat <- winetest
+lmwinedat$quality = ifelse(winetest$quality <= 6,0,1)
+lmwinedat <- as.data.frame(lmwinedat)
+
+p <- predict(lmwine, newdata = lmwinedat, type="response")
+pr <- prediction(p, lmwinedat$quality)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+
+
+## confusion matrix
+lm.const = lm(quality ~., data=abc.winedat)
+lm.aic= step(lm.const)
+pred.lm = predict(lm.aic)
+pred = rep(0,length(pred.lm))
+pred[pred.lm>=3] = 3
+pred[pred.lm>=4] = 4
+pred[pred.lm>=5] = 5
+pred[pred.lm>=6] = 6
+pred[pred.lm>=7] = 7
+pred[pred.lm>=8] = 8
+pred[pred.lm>=9] = 9
+table(true=abc.winedat$quality, pred)
+
+## Lift chart
+
+# function
+fun.lift = function(xx, K)
+{
+  num.quality = round(nrow(xx)/K)
+  base.lift = sum(xx[,1])/nrow(xx)
+  quality.lift = list();output = c()
+  for(i in 1:K)
+  {
+    if(i!=K) {
+      quality.lift[[i]] = seq((1+num.quality*(i-1)), num.quality*i) 
+    } else
+      quality.lift[[i]] = seq((1+num.quality*(i-1)),nrow(xx))
+    CR = 100*sum(xx[quality.lift[[i]],1])/sum(xx[,1])
+    resp = sum(xx[quality.lift[[i]],1])/length(quality.lift[[i]])
+    lift = resp/base.lift
+    output = rbind(output, c(CR, resp, lift))
+  }
+  colnames(output) = c("%Captured response","%Response","Lift")
+  return(list(base.lift=base.lift,num.quality=K,lift.chart=output))
+}
+
+# lift table
+sort.pred.lm = sort(pred.lm,decreasing=T)
+sort.winedat = abc.winedat$quality[order(pred.lm,decreasing=T)]
+lm.lift.data = cbind(sort.winedat, sort.pred.lm)
+lm.lift = fun.lift(lm.lift.data,10)
+lm.lift
+
+# lift chart //// 두 곡선이 너무 똑같아서 하나로 겹쳐보임
+plot(lm.lift$lift.chart[,3], type="o",ylab="Lift",
+     xlab="quality",pch=7,lty=2,col="red")
+legend("topright", legend=c("linear"),lty=2,
+       col=c(2,4), pch=7 )
+
+
+## TREE
+tree.winedat <- winedat
+tree.winedat$quality = ifelse(abc.winedat$quality<=5,"Bad",ifelse(abc.winedat$quality<=7,"Normal","Good"))
+tree.winedat[,7] <- as.factor(abc.winedat[,7])
+
+# fit a tree
+library(tree)
+ir.tr = tree(quality ~., data = winedat)
+summary(ir.tr)
+plot(ir.tr)
+text(ir.tr)
+
+## regression tree & predict
+reg.tree = tree(formula = quality ~., data = winedat)
+tree.test <- winetest[,c("alcohol", "sulphates", "pH", "volatile.acidity", "citric.acid", "total.sulfur.dioxide","quality")]
+predict.tree <- predict(ir.tr,tree.test)
+tree.table <- table(round(predict.tree,0)==tree.test[,c("quality")])
+tree.table <- matrix(tree.table, ncol=2)
+colnames(tree.table) <- c("FALSE", "TRUE")
+tree.p <- tree.table[1,2]/nrow(tree.test)
+tree.p
+
+## 가지치기 위한 교차검증
+cvtree.winedat <- cv.tree(ir.tr, FUN=prune.tree)
+plot(cvtree.winedat)
+best.cut <- cvtree.winedat$size[which.min(cvtree.winedat$dev)]
+best.cut
+# 가지치기 후 의사결정나무
+best.tree <- prune.tree(ir.tr, best = best.cut)
+plot(best.tree)
+text(best.tree)
+summary(best.tree)
+
+pred.best.tree <- predict(best.tree, tree.test)
+best.tree.table <- table(round(pred.best.tree,0)==tree.test[,c("quality")])
+best.tree.table <- matrix(best.tree.table, ncol=2)
+colnames(best.tree.table) <- c("FALSE", "TRUE")
+best.tree.p <- best.tree.table[1,2]/nrow(tree.test)
+best.tree.p
